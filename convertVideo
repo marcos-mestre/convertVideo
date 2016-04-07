@@ -1,0 +1,323 @@
+#!/bin/bash
+
+#Variables initialization
+outputFolder=""
+outputFileNameWE=""
+outputFileNameWOE=""
+outputTempFile=""
+inputFolder=""
+inputFileName=""
+parametersFile=()
+dest="current"
+suffixTxt=""
+
+#Flags initialization
+vlc=false
+ios=false
+led=false
+hlp=false
+formatPRMS=false
+destParameter=false
+suffix=false
+
+#Counters initialization
+destCounter=0
+suffixCounter=0
+
+
+
+#Functions definitions
+printUsage()
+{
+	echo "Usage:"
+	echo "convertVideo --vlc | --ios | --led [ overwrite | suffix ] file1 [file2 file3 ... fileN]"
+	echo "convertVideo --help"
+}
+
+error()
+{
+	echo "$1"
+	printUsage
+	exit 1
+}
+
+verifyParameter()
+{
+
+	case "$1" in
+	--vlc)
+		if [ $suffix = true ]; then
+			suffixTxt="--vlc"
+			suffix=false
+		elif [ $destParameter = false ]; then
+			vlc=true
+			formatPRMS=true
+		else
+			error "Was expecting an output folder"
+		fi
+		;;
+
+	--ios)
+		if [ $suffix = true ]; then
+			suffixTxt="--ios"
+			suffix=false
+		elif [ $destParameter = false ]; then
+			ios=true
+			formatPRMS=true
+		else
+			error "Was expecting an output folder"
+		fi
+		;;
+
+	--led)
+		if [ $suffix = true ]; then
+			suffixTxt="--led"
+			suffix=false
+		elif [ $destParameter = false ]; then
+			led=true
+			formatPRMS=true
+		else
+			error "Was expecting an output folder"
+		fi
+		;;
+
+	--help)
+		if [ $suffix = true ]; then
+			suffixTxt="--help"
+			suffix=false
+		elif [ $destParameter = false ]; then
+			hlp=true
+		else
+			error "Was expecting an output folder"
+		fi
+		;;
+
+	--overwrite)
+		if [ $suffix = true ]; then
+			suffixTxt="--overwrite"
+			suffix=false
+		elif [ $destParameter = false ]; then
+			dest="overwrite"
+			((destCounter++))
+		else
+			error "Was expecting an output folder"
+		fi
+		;;
+
+	--outputFolder)
+		if [ $suffix = true ]; then
+			suffixTxt="--outputFolder"
+			suffix=false
+		elif [ $destParameter = false ]; then
+			dest="outputFolder"
+			((destCounter++))
+			destParameter=true
+		else
+			error "Was expecting an output folder"
+		fi
+		;;
+
+	--sufix)
+		if [ $suffix = true ]; then
+			suffixTxt="--suffix"
+			suffix=false
+		elif [ $destParameter = false ]; then
+			suffix=true
+			((suffixCounter++))
+		else
+			error "Was expecting an output folder"
+		fi
+		;;
+
+	*)
+		if [ $destParameter = true ]; then
+			if [ -d "$1" ]; then
+				outputFolder="$1"
+				destParameter=false
+			else
+				error "Was expecting an output folder"
+			fi
+
+		elif [ $suffix = true ]; then
+			suffixTxt="$1"
+			suffix=false
+
+		elif [ -f "$1" ]; then
+			#If the file exists, don't look for parameters
+			parametersFile+=("$1")
+
+		elif [ "${1:0:2}" = "--" ]; then
+			#If the parameter starts with double
+			error "Parameter not recognized: ${1}"
+
+
+		elif [ "${1:0:1}" = "-" ]; then
+			size=${#1}
+			for (( p=1; p<size; p++)); do
+				currentParameter="${1:$p:${p}+1}"
+				case $currentParameter in
+				v)
+					vlc=true
+					formatPRMS=true
+					;;
+
+				i)
+					#FIXME: Esto no funciona, por algún motivo. Probar con -vi, devuelve error.
+					ios=true
+					formatPRMS=true
+					;;
+
+				l)
+					led=true
+					formatPRMS=true
+					;;
+
+				h)
+					hlp=true
+					;;
+
+				*)
+					error "Parameter not recognized: ${1}"
+				esac
+			done
+		else
+			#As already checked, at the beggining of the if clause, if there is a file with this name...
+			error "The file $1 doesn't exist."
+		fi
+	esac
+}
+
+
+
+splitInput()
+{
+	if [[ ! $1 = *\* ]]; then
+		#If I can't find the character \, I assume that the path doesn't contains a folder
+		inputFolder=$(pwd)
+		inputFileName=$(1)
+	else
+		inputFolder=${1%/*}
+		inputFileName=${1##*/}
+	fi
+
+
+}
+
+
+
+getOutputFilename()
+{
+	if [ $suffixCounter = 1 ]; then
+		outputFileNameWE="${outputFolder}/${inputFileName%.*}${suffixTxt}.${inputFileName##*.}"
+		outputFileNameWOE="${outputFolder}/${inputFileName%.*}${suffixTxt}"
+	else
+		outputFileNameWE="${outputFolder}/${inputFileName}"
+		outputFileNameWOE="${outputFolder}/${inputFileName%.*}"
+	fi
+	outputTempFile="${outputFolder}/convertVideoTemp"
+}
+
+
+#Definition of the functions which actually do the convertions
+convertToVLC()
+{
+	#Video: todo. Audio: todo menos ac3. Contenedores: todo.
+	nice -10 ffmpeg -hide_banner -i "$inputFileName" -strict -2 -vcodec copy -acodec aac "${outputTempFile}.${inputFileName##*.}"
+	mv "${outputTempFile}.${inputFileName##*.}" "$outputFileNameWE"
+}
+
+convertToIOS()
+{
+	#El reproductor nativo de ios solo soporta:
+	#Video: H264, MPEG4; Audio: AAC; Contenedores: m4v, mp4, mov
+	nice -10 ffmpeg -hide_banner -i "$inputFileName" -f mp4 -strict -2 -vcodec h264 -acodec aac "$outputTempFile".mp4
+	mv "$outputTempFile".mp4 "$outputFileNameWOE".mp4
+}
+
+convertToLED()
+{
+	#El reproductor nativo solo soporta:
+	#Video: buscar el manual; Audio: mp3; Contenedores: avi, mp4
+	nice -10 ffmpeg -hide_banner -i "$inputFileName" -f mp4  -strict -2 -vcodec copy -acodec mp3 "$outputTempFile".mp4
+	mv "$outputTempFile".mp4 "$outputFileNameWOE".mp4
+}
+
+#TODO: Agregar una función que obtenga los codecs utilizados en el archivo
+
+#TODO: Agregar una función que envíe a las funciones de conversión los codecs del archivo, y agregar a esas funciones la lógica para reutilizar el codec en caso de ser posible o de convertir lo estrictamente necesario.
+
+
+#Beggining of the procedure
+
+#Analize all the parameters,
+for p in "$@"
+do
+	verifyParameter "$p"
+done
+
+#If the user called the help parameter, give it back to him, and finish the script
+if [ ${hlp} = true ]; then
+	printUsage
+	exit 0
+fi
+
+###### ERROR HANDLING: BEGGINING ######
+
+#If the user didn't choose a format to convert to, notice it and finish the script
+if [ $formatPRMS = false ]; then
+	error "No destination format selected."
+fi
+
+#The user must avoid seleting both overwrite and suffix options, for obvious reasons
+if [ $suffix = true ] && [ $dest = "overwrite" ]; then
+	error "It's impossible to overwrite a file with a suffix"
+fi
+
+#If the user choose more than one destination parameter, notice it and finish the script
+if [ $destCounter -gt 1 ]; then
+	error "Incompatible destination parameters"
+
+#If the user choose to select an output folder and the variable wasn't set, finish the script
+elif [ $dest = "outputFolder" ] && [ "$outputFolder" = "" ]; then
+	error "Was expecting an output folder"
+fi
+
+#If the user call the suffix parameter more than once, finish the script
+if [ $suffixCounter -gt 1 ]; then
+	error "You cant use multiples suffixes"
+
+#If the user call the suffix parameter and the variable wasn't set, finish the script
+elif [ $suffixCounter = 1 ] && [ "$suffixTxt" = "" ]; then
+	error "Was expecting a suffix"
+fi
+
+###### ERROR HANDLING: END ######
+
+#Obtengo el directorio actual para usarlo de punto de retorno luego de trabajar con cada archivo
+currentFolder=$(pwd)
+
+if [ $dest = "current" ]; then
+	outputFolder=$currentFolder
+fi
+
+#Start to work with the files obtained from the parameters
+for f in "${parametersFile[@]}"
+do
+
+	splitInput "$f"
+
+	if [ $dest = "overwrite" ]; then
+		outputFolder=$inputFolder
+	fi
+
+	getOutputFilename "$f"
+	cd "$inputFolder" || error "Couldn't change to the next source folder"
+	
+	#Start the video conversion for every format selected from the parameters
+	if  [ $vlc = true ]; then convertToVLC; fi
+	if  [ $ios = true ]; then convertToIOS ; fi
+	if  [ $led = true ]; then convertToLED; fi
+
+	cd "$currentFolder" || error "Couldn't change to the original folder: $currentFolder"
+
+done
