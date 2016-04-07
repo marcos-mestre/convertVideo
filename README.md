@@ -7,3 +7,8 @@ I find creating a wrapper script around the ffmpeg a fast way to get faster an b
 
 # **convertVideo** - Bash Script
 This is a script to make easier the use of ffmpeg video convert utility, specially to make videos work with media players on iOS devices.
+
+## Requisites
+OSX / GNU-Linux / BSD / Unix
+Bash shell
+ffmpeg tool installed, reachable from the command path.
